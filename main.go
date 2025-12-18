@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/SimplyLuckyy/chirpy/internal/database"
+	"github.com/simplyluckyy/chirpy/internal/database"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"net/http"
@@ -9,23 +9,45 @@ import (
 	"sync/atomic"
 	"os"
 	"database/sql"
+	"time"
+	"github.com/google/uuid"
 )
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	db *database.Queries
+	platform string
 }
 
+type User struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
+}
+
+
 func main() {
+	godotenv.Load()
+
 	const rootPath = "."
 	const port = "8080"
 	dbURL := os.Getenv("DB_URL")
-	db, _ := sql.Open("postgres", dbURL)
+	if dbURL == "" {
+		log.Fatal("DB_URL must be set")
+	}
+	db, err := sql.Open("postgres", dbURL)
+	
+	if err != nil {
+		log.Fatalf("Error opening database: %s", err)
+	}
 	dbQueries := database.New(db)
+	dbPlatform := os.Getenv("PLATFORM")
 	
 	apiCfg := apiConfig{
 		fileserverHits: atomic.Int32{},
 		db: dbQueries,
+		platform: dbPlatform,
 	}
 
 	serveMux := http.NewServeMux()
@@ -34,6 +56,7 @@ func main() {
 	serveMux.HandleFunc("GET /admin/metrics", apiCfg.handlerServerHits)
 	serveMux.HandleFunc("POST /admin/reset", apiCfg.handlerResetHits)
 	serveMux.HandleFunc("POST /api/validate_chirp", handlerValidate)
+	serveMux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
 
 	serverStruct := &http.Server{
 		Handler: serveMux,

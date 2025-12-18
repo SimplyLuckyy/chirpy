@@ -38,6 +38,7 @@ func (cfg *apiConfig) handlerServerHits(w http.ResponseWriter, r *http.Request) 
 
 func (cfg *apiConfig) handlerResetHits(w http.ResponseWriter, r *http.Request) {
 	cfg.fileserverHits.Store(0)
+	cfg.db.Reset(r.Context())
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Hits reset to 0"))
 }
@@ -81,6 +82,39 @@ func handlerValidate(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, http.StatusOK, vals{
 		CleanedBody: cleaned,
 	})
+}
+
+func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) {
+	type params struct {
+		Email string `json:"email"`
+	}
+	type response struct {
+		User
+	}
+	
+	decoder := json.NewDecoder(r.Body)
+	userEmail := params{}
+	err := decoder.Decode(&userEmail)
+	if err != nil {
+		errorResponse(w, http.StatusInternalServerError, "Couldn't decode params", err)
+		return
+	}
+
+	user, err := cfg.db.CreateUser(r.Context(), userEmail.Email)
+	if err != nil {
+		errorResponse(w, http.StatusInternalServerError, "Couldn't create user", err)
+		return
+	}
+	
+	jsonResponse(w, http.StatusCreated, response{
+		User: User{
+			ID: user.ID,
+			CreatedAt: user.CreatedAt,
+			UpdatedAt: user.UpdatedAt,
+			Email: user.Email,
+		},
+	})
+	
 }
 
 func errorResponse(w http.ResponseWriter, code int, msg string, err error) {
