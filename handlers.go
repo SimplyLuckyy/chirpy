@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"errors"
+	"github.com/google/uuid"
+
+	"github.com/simplyluckyy/chirpy/internal/database"
 )
 
 func handlerReadiness(w http.ResponseWriter, r *http.Request) {
@@ -43,29 +47,14 @@ func (cfg *apiConfig) handlerResetHits(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Hits reset to 0"))
 }
 
-func handlerValidate(w http.ResponseWriter, r *http.Request) {
-	type params struct {
-		Body string `jason:"body"`
-	}
-	type vals struct {
-		CleanedBody string `json:"cleaned_body"`
-	} 
-
-	decoder := json.NewDecoder(r.Body)
-	chirp := params{}
-	err := decoder.Decode(&chirp)
-	if err != nil {
-		errorResponse(w, http.StatusInternalServerError, "Couldn't decode params", err)
-		return
-	}
+func validateChirp(body string) (string, error) {
 	
 	const maxLength = 140
-	if len(chirp.Body) > maxLength {
-		errorResponse(w, http.StatusBadRequest, "Chirp is too long", nil)
-		return
+	if len(body) > maxLength {
+		return "", errors.New("Chirp is too long")
 	}
 
-	words := strings.Split(chirp.Body, " ")
+	words := strings.Split(body, " ")
 
 	for i, word := range words {
 		if (strings.ToLower(word) == "kerfuffle") {
@@ -79,9 +68,7 @@ func handlerValidate(w http.ResponseWriter, r *http.Request) {
 
 	cleaned := strings.Join(words, " ")
 
-	jsonResponse(w, http.StatusOK, vals{
-		CleanedBody: cleaned,
-	})
+	return cleaned, nil
 }
 
 func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) {
@@ -115,6 +102,44 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 		},
 	})
 	
+}
+
+func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request) {
+	type params struct {
+		Body string `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	uncleaned := params{}
+	err := decoder.Decode(&uncleaned)
+	if err != nil {
+		errorResponse(w, http.StatusInternalServerError, "Couldn't decode params", err)
+		return
+	}
+
+	cleaned, err := validateChirp(uncleaned.Body)
+	if err != nil {
+		errorResponse(w, http.StatusBadRequest, err.Error(), err)
+		return
+	}
+	
+	chirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
+		Body: cleaned,
+		UserID: uncleaned.UserID,
+	})
+	if err != nil {
+		errorResponse(w, http.StatusInternalServerError, "Couldn't create chirp", err)
+		return
+	}
+
+	jsonResponse(w, http.StatusCreated, Chirp{
+		ID:		   chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:	   chirp.Body,
+		UserID:	   chirp.UserID,
+	})
 }
 
 func errorResponse(w http.ResponseWriter, code int, msg string, err error) {
