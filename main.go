@@ -24,6 +24,7 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Email     string    `json:"email"`
+	Password  string	`json:"-"`
 }
 
 type Chirp struct {
@@ -68,6 +69,7 @@ func main() {
 	serveMux.HandleFunc("GET /api/chirps", apiCfg.handlerGetChirps)
 	serveMux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.handlerGetChirpID)
 	serveMux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
+	serveMux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
 
 	serverStruct := &http.Server{
 		Handler: serveMux,

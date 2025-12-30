@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/simplyluckyy/chirpy/internal/database"
+	"github.com/simplyluckyy/chirpy/internal/auth"
 )
 
 func handlerReadiness(w http.ResponseWriter, r *http.Request) {
@@ -73,6 +74,7 @@ func validateChirp(body string) (string, error) {
 
 func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) {
 	type params struct {
+		Password string `json:"password"`
 		Email string `json:"email"`
 	}
 	type response struct {
@@ -80,14 +82,24 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 	}
 	
 	decoder := json.NewDecoder(r.Body)
-	userEmail := params{}
-	err := decoder.Decode(&userEmail)
+	userParams := params{}
+	err := decoder.Decode(&userParams)
 	if err != nil {
 		errorResponse(w, http.StatusInternalServerError, "Couldn't decode params", err)
 		return
 	}
 
-	user, err := cfg.db.CreateUser(r.Context(), userEmail.Email)
+	hashedPassword, err := auth.HashPassword(userParams.Password)
+	if err != nil {
+		errorResponse(w, http.StatusInternalServerError, "Couldn't hash password", err)
+		return
+	}
+
+	user, err := cfg.db.CreateUser(r.Context(), database.CreateUserParams{
+		Email: userParams.Email,
+		HashedPassword: hashedPassword,
+	})
+
 	if err != nil {
 		errorResponse(w, http.StatusInternalServerError, "Couldn't create user", err)
 		return
@@ -183,6 +195,45 @@ func (cfg *apiConfig) handlerGetChirpID(w http.ResponseWriter, r *http.Request) 
 		UpdatedAt: chirp.UpdatedAt,
 		UserID: chirp.UserID,
 		Body:  chirp.Body,
+	})
+}
+
+func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
+	type params struct {
+		Password string `json:"password"`
+		Email string `json:"email"`
+	}
+	type response struct {
+		User
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	userParams := params{}
+	err := decoder.Decode(&userParams)
+	if err != nil {
+		errorResponse(w, http.StatusInternalServerError, "Couldn't decode params", err)
+		return
+	}
+
+	user, err := cfg.db.GetUserByEmail(r.Context(), userParams.Email)
+	if err != nil {
+		errorResponse(w, http.StatusInternalServerError, "Incorrect Email or Password", err)
+		return
+	}
+
+	match, err := auth.CheckPasswordHash(userParams.Password, user.HashedPassword)
+	if err != nil || !match {
+		errorResponse(w, http.StatusUnauthorized, "Incorrect Email or Password", err)
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, response{
+		User: User{
+			ID:        user.ID,
+			Email:     user.Email,
+			CreatedAt: user.CreatedAt,
+			UpdatedAt: user.UpdatedAt,
+		},
 	})
 }
 
