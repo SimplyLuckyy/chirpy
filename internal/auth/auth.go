@@ -1,7 +1,12 @@
 package auth
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"time"
+	"errors"
+	"net/http"
+	"strings"
 
 	"github.com/alexedwards/argon2id"
 	"github.com/golang-jwt/jwt/v5"
@@ -58,4 +63,22 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 	if err != nil {return uuid.Nil, err}
 	
 	return id, nil
+}
+
+func GetBearerToken(headers http.Header) (string, error) {
+	authHeader := headers.Get("Authorization")
+	if authHeader == "" {return "", errors.New("no auth header included in request")}
+
+	split := strings.Split(authHeader, " ")
+	if len(split) < 2 || split[0] != "Bearer" {
+		return "", errors.New("malformed authorization header")
+	}
+
+	return split[1], nil
+}
+
+func MakeRefreshToken() string {
+	token := make([]byte, 32)
+	rand.Read(token)
+	return hex.EncodeToString(token)
 }

@@ -17,6 +17,7 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	db *database.Queries
 	platform string
+	jwtSecret string
 }
 
 type User struct {
@@ -53,11 +54,13 @@ func main() {
 	}
 	dbQueries := database.New(db)
 	dbPlatform := os.Getenv("PLATFORM")
+	dbJWTSecret := os.Getenv("JWT_SECRET")
 	
 	apiCfg := apiConfig{
 		fileserverHits: atomic.Int32{},
 		db: dbQueries,
 		platform: dbPlatform,
+		jwtSecret: dbJWTSecret,
 	}
 
 	serveMux := http.NewServeMux()
@@ -70,6 +73,8 @@ func main() {
 	serveMux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.handlerGetChirpID)
 	serveMux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
 	serveMux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
+	serveMux.HandleFunc("POST /api/refresh", apiCfg.handlerRefresh)
+	serveMux.HandleFunc("POST /api/revoke", apiCfg.handlerRevoke)
 
 	serverStruct := &http.Server{
 		Handler: serveMux,
